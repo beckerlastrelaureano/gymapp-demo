@@ -409,6 +409,58 @@
     });
   }
 
+  // Ajustes: si el gimnasio está activado pero no está en la nube, el QR llevaría a la demo.
+  // Se tapa el QR y se ofrece conectarlo.
+  function revisarLinkAjustes() {
+    var sec = document.querySelector('[aria-label="Link y QR"]');
+    if (!sec) return;
+    var d = leer(CLAVE_DATOS), lic = leer(CLAVE_LICENCIA);
+    var falta = !(cfg && cfg.gid) && d && d.gym && d.gym.nombre !== NOMBRE_DEMO;
+    var aviso = sec.querySelector('#nube-falta');
+    Array.prototype.forEach.call(sec.children, function (h) { if (h.tagName !== 'H2' && h.id !== 'nube-falta') h.style.display = falta ? 'none' : ''; });
+    if (!falta) { if (aviso) aviso.remove(); return; }
+    if (aviso) return;
+    aviso = document.createElement('div');
+    aviso.id = 'nube-falta';
+    aviso.style.cssText = 'border:1px solid #E0A33A;background:rgba(224,163,58,.1);border-radius:12px;padding:14px;display:grid;gap:10px;font-size:14px';
+    aviso.innerHTML = '<b>El link para alumnos todavía no está listo.</b>' +
+      '<span>Este gimnasio no está conectado a la nube: si les pasás el link o el QR, a tus alumnos les abre la demo y no los encuentra. Conectalo creando tu acceso de dueño.</span>';
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn btn-primario'; b.textContent = lic ? 'Conectar mi gimnasio' : 'Activar con mi código';
+    b.onclick = function () {
+      if (lic) pasoCuenta(lic.codigo, lic.gimnasio, false);
+      else { localStorage.removeItem(CLAVE_LICENCIA); location.reload(); }
+    };
+    aviso.appendChild(b);
+    sec.appendChild(aviso);
+  }
+
+  function instalada() {
+    try { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; } catch (e) { return false; }
+  }
+  function pantallaElegirGym() {
+    mostrar(
+      '<div class="icono">🏋️</div><h1>¿De qué gimnasio sos?</h1>' +
+      '<p>Escaneá de nuevo el QR de tu gimnasio, o escribí acá el nombre que aparece al final de su link (por ejemplo, en <b>…/?g=focus</b> es <b>focus</b>).</p>' +
+      '<form id="nube-gym"><input id="nube-gid" autocomplete="off" autocapitalize="none" placeholder="focus" aria-label="Gimnasio">' +
+      '<div class="error" id="nube-gerr"></div><button class="primario" id="nube-gok">Entrar</button></form>' +
+      '<button class="secundario" id="nube-demo">Solo quiero ver la demo</button>'
+    );
+    var input = document.getElementById('nube-gid'), err = document.getElementById('nube-gerr'), ok = document.getElementById('nube-gok');
+    document.getElementById('nube-demo').onclick = function () { guardarLocal('gymapp-quiere-demo', true); location.reload(); };
+    document.getElementById('nube-gym').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var t = input.value.trim(), m = t.match(/[?&]g=([^&#\s]+)/);
+      var gid = m ? decodeURIComponent(m[1]) : slug(t);
+      if (!t) { err.textContent = 'Escribí el nombre de tu gimnasio.'; return; }
+      ok.disabled = true; err.textContent = '';
+      leerDoc('gimnasios/' + encodeURIComponent(gid)).then(function (g) {
+        if (!g) { ok.disabled = false; err.textContent = 'No encontramos ese gimnasio. Fijate en el link que te pasaron.'; return; }
+        location.replace(location.pathname + '?g=' + encodeURIComponent(gid));
+      }).catch(function () { ok.disabled = false; err.textContent = 'No hay conexión. Probá de nuevo con internet.'; });
+    });
+  }
+
   window.gymNube = { pasoCuenta: pasoCuenta, config: function () { return cfg; } };
 
   // ----- Arranque ------------------------------------------------------
@@ -428,13 +480,17 @@
       bajar(true);
       setInterval(function () { if (document.visibilityState === 'visible') bajar(false); }, SEGUNDOS_ENTRE_BAJADAS * 1000);
       document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') bajar(false); });
+    } else if (instalada() && !leer(CLAVE_LICENCIA) && !leer('gymapp-quiere-demo')) {
+      // App instalada que abrió sin saber el gimnasio (por ejemplo en iPhone, que no comparte
+      // memoria con Safari): en vez de la demo, pregunta de qué gimnasio es.
+      pantallaElegirGym();
     } else {
       // Gimnasio activado antes de que existiera la nube: falta crear el acceso del dueño.
       var lic = leer(CLAVE_LICENCIA), d = leer(CLAVE_DATOS);
       var yaPregunto = false; try { yaPregunto = sessionStorage.getItem('gymapp-nube-despues'); sessionStorage.setItem('gymapp-nube-despues', '1'); } catch (e) {}
       if (lic && d && d.gym && d.gym.nombre !== NOMBRE_DEMO && !yaPregunto) pasoCuenta(lic.codigo, lic.gimnasio, false);
     }
-    new MutationObserver(ocultarPistaDemo).observe(document.body, { childList: true, subtree: true });
+    new MutationObserver(function () { ocultarPistaDemo(); revisarLinkAjustes(); }).observe(document.body, { childList: true, subtree: true });
   }
   if (document.body) arrancar();
   else document.addEventListener('DOMContentLoaded', arrancar);

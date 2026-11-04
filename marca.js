@@ -61,7 +61,7 @@
     var d = leer(CLAVE_DATOS), gym = d && d.gym;
     var link = document.querySelector('link[rel="manifest"]');
     if (!link) return;
-    if (!original) original = { manifest: link.getAttribute('href'), apple: (document.querySelector('link[rel="apple-touch-icon"]') || {}).href, titulo: (document.querySelector('meta[name="apple-mobile-web-app-title"]') || {}).content };
+    if (!original) original = { manifest: 'manifest.json', apple: (document.querySelector('link[rel="apple-touch-icon"]') || {}).href, titulo: (document.querySelector('meta[name="apple-mobile-web-app-title"]') || {}).content };
     var cfg = leer(CLAVE_NUBE) || {};
     var firma = gym && gym.nombre !== NOMBRE_DEMO ? [gym.nombre, gym.acento, gym.logo, cfg.gid].join('|') : 'demo';
     if (firma === ultima) return;
