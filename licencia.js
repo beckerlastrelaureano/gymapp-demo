@@ -161,6 +161,35 @@
     document.getElementById('lic-reintentar').addEventListener('click', function () { location.reload(); });
   }
 
+  // El código ya no existe (Becker lo borró): se puede volver a la demo o poner otro código.
+  function pantallaBorrado(lic) {
+    var nube = leer('gymapp-nube');
+    var esAlumno = nube && nube.rol === 'alumno';
+    mostrar(
+      '<div class="icono">🗝️</div>' +
+      '<h1>Este acceso ya no existe</h1>' +
+      '<p>' + (esAlumno
+        ? 'El gimnasio ' + (lic.gimnasio || '').replace(/[<>&]/g, '') + ' ya no usa este link. Pedile el link nuevo a tu gimnasio.'
+        : 'El código ' + String(lic.codigo).replace(/[<>&]/g, '') + ' fue dado de baja. Podés poner otro código (tus alumnos y rutinas se conservan en este dispositivo) o volver a la demo.') + '</p>' +
+      (esAlumno ? '' : '<button class="primario" id="lic-otro">Poner otro código</button>') +
+      '<button class="' + (esAlumno ? 'primario' : 'secundario') + '" id="lic-demo2">Volver a la demo</button>' +
+      '<a class="secundario" style="margin-top:10px" href="https://wa.me/' + WHATSAPP_BECKER + '?text=' +
+      encodeURIComponent('Hola Becker! Mi acceso de Gym App (' + lic.codigo + ') ya no funciona.') + '" target="_blank" rel="noopener">Escribir a Becker</a>'
+    );
+    var otro = document.getElementById('lic-otro');
+    if (otro) otro.addEventListener('click', function () {
+      // Se desconecta de la nube vieja; al poner el código nuevo se crea de nuevo.
+      localStorage.removeItem('gymapp-nube');
+      localStorage.removeItem(CLAVE_LICENCIA);
+      location.replace(location.pathname);
+    });
+    document.getElementById('lic-demo2').addEventListener('click', function () {
+      ['gymapp-nube', CLAVE_LICENCIA, CLAVE_DATOS].forEach(function (k) { localStorage.removeItem(k); });
+      try { sessionStorage.clear(); } catch (e) {}
+      location.replace(location.pathname); // sin ?g=, si no vuelve a cargar el gimnasio viejo
+    });
+  }
+
   // ----- Control principal ---------------------------------------------
   var controlando = false;
   function controlar() {
@@ -174,7 +203,8 @@
 
     controlando = true;
     consultar(lic.codigo).then(function (remota) {
-      if (!remota || remota.estado !== 'activo') { pantallaSuspendida(lic, 'suspendido'); return; }
+      if (!remota) { pantallaBorrado(lic); return; }
+      if (remota.estado !== 'activo') { pantallaSuspendida(lic, 'suspendido'); return; }
       lic.verificado = Date.now();
       lic.gimnasio = remota.gimnasio || lic.gimnasio;
       guardar(CLAVE_LICENCIA, lic);
