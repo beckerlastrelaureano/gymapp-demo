@@ -1,6 +1,6 @@
 # gymApp (demo + código de acceso de Becker + nube)
 
-Copia de la demo de gymapp-demo.vercel.app con dos agregados: `licencia.js` y `nube.js`.
+Copia de la demo de gymapp-demo.vercel.app con tres agregados: `licencia.js`, `nube.js` y `marca.js`.
 Publicada en https://beckerlastrelaureano.github.io/gymapp-demo/
 
 - Con los datos de ejemplo ("Gimnasio Demo") se usa libre, para mostrarla.
@@ -38,3 +38,11 @@ Límites conocidos:
 - Las anotaciones de los alumnos se pueden escribir sin cuenta (cualquiera con el link).
 - Todo el gimnasio va en un documento (máximo 1 MB): logos o GIFs propios muy pesados pueden
   no entrar.
+
+## Ícono de cada gimnasio al instalar (`marca.js`)
+
+Fuera de la demo, el manifest de la app se arma con el nombre del gimnasio y su logo (o sus
+iniciales sobre su color si no tiene logo). También cambia el ícono de iPhone. La app instalada
+abre directo en el link del gimnasio (`?g=...`). Si el dueño cambia el logo, lo toman las
+instalaciones nuevas; las que ya estaban instaladas pueden tardar en actualizarse o necesitar
+reinstalarse (eso lo decide el celular).
