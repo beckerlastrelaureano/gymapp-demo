@@ -1,0 +1,33 @@
+REGLAS PARA GYM APP EN LA NUBE (Firebase, proyecto becker-sync)
+================================================================
+
+Dónde: console.firebase.google.com > becker-sync > Firestore Database > pestaña "Reglas".
+
+NO borres lo que ya hay (son las reglas de Rumbo y de los códigos).
+Pegá este bloque ADENTRO de "match /databases/{database}/documents { ... }",
+por ejemplo justo antes de la última llave "}" de ese bloque, y tocá "Publicar".
+
+    // ---- Gym App: datos de cada gimnasio ----
+    match /gimnasios/{gid} {
+      // El link del gimnasio lo puede abrir cualquiera (alumnos sin cuenta).
+      allow read: if true;
+      // Solo se crea con un código de Becker activo, y queda a nombre de quien lo crea.
+      allow create: if request.auth != null
+        && request.resource.data.dueno == request.auth.uid
+        && get(/databases/$(database)/documents/licencias/$(request.resource.data.codigo)).data.estado == 'activo';
+      // Solo el dueño lo cambia, y no puede cambiar ni el dueño ni el código.
+      allow update: if request.auth != null
+        && resource.data.dueno == request.auth.uid
+        && request.resource.data.dueno == resource.data.dueno
+        && request.resource.data.codigo == resource.data.codigo;
+
+      // Lo que anota cada alumno (series, pesos, asistencias).
+      match /alumnos/{aid} {
+        allow read: if true;
+        allow write: if request.resource.data.keys().hasOnly(['dni', 'datos', 'actualizado'])
+          && request.resource.data.datos.size() < 200000;
+      }
+    }
+
+Además, en Firestore > "Reglas", "licencias" ya tiene que poder leerse sin cuenta
+(hoy ya funciona así, porque la app verifica los códigos).

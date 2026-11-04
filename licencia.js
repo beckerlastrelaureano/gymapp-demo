@@ -128,7 +128,9 @@
           d.gym.nombre = lic.gimnasio;
           guardar(CLAVE_DATOS, d);
         }
-        location.reload();
+        // Siguiente paso: el dueño crea su acceso y el gimnasio se sube a la nube (nube.js).
+        if (window.gymNube) { ocultar(); window.gymNube.pasoCuenta(codigo, lic.gimnasio, false); }
+        else location.reload();
       }).catch(function () {
         error.textContent = 'No hay conexión. Probá de nuevo con internet.';
       }).then(function () {
