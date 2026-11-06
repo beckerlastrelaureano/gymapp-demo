@@ -203,6 +203,9 @@
 
     controlando = true;
     consultar(lic.codigo).then(function (remota) {
+      // nube.js cambió la licencia mientras se consultaba: este resultado ya no vale.
+      var ahora = leer(CLAVE_LICENCIA);
+      if (!ahora || ahora.codigo !== lic.codigo) return 'otra';
       if (!remota) { pantallaBorrado(lic); return; }
       if (remota.estado !== 'activo') { pantallaSuspendida(lic, 'suspendido'); return; }
       lic.verificado = Date.now();
@@ -213,8 +216,13 @@
       // Sin internet: se permite usar un tiempo desde la última verificación.
       if (Date.now() - (lic.verificado || 0) > DIAS_SIN_INTERNET * DIA) pantallaSuspendida(lic, 'sin-internet');
       else ocultar();
-    }).then(function () { controlando = false; });
+    }).then(function (resultado) {
+      controlando = false;
+      if (resultado === 'otra') controlar();
+    });
   }
+  // nube.js avisa cuando guarda la licencia del gimnasio que se abrió.
+  window.gymLicenciaControlar = controlar;
 
   // Si la app formatea los datos ("empezar de cero"), se vuelve a controlar al instante.
   Storage.prototype.setItem = function (clave, valor) {

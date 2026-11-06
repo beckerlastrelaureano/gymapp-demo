@@ -193,10 +193,12 @@
       var principal = r[0];
       if (!principal) { if (primera) avisar('No encontramos ese gimnasio. Pedile el link de nuevo a tu gimnasio.'); return; }
       borradas = JSON.parse(principal.borradas || '[]');
-      if (!esDueno()) {
-        // La licencia del gimnasio también vale para este dispositivo (se bloquea si Becker lo suspende).
-        var lic = leer(CLAVE_LICENCIA);
-        if (!lic || lic.codigo !== principal.codigo) guardarLocal(CLAVE_LICENCIA, { codigo: principal.codigo, gimnasio: JSON.parse(principal.datos).gym.nombre, verificado: Date.now() });
+      // La licencia que vale es la del gimnasio, también para el dueño: reemplaza a un código
+      // viejo guardado en este dispositivo (se bloquea solo si Becker suspende el del gimnasio).
+      var lic = leer(CLAVE_LICENCIA);
+      if (!lic || lic.codigo !== principal.codigo) {
+        guardarLocal(CLAVE_LICENCIA, { codigo: principal.codigo, gimnasio: JSON.parse(principal.datos).gym.nombre, verificado: Date.now() });
+        if (window.gymLicenciaControlar) window.gymLicenciaControlar();
       }
       if (pendiente || subiendo) return; // hubo un cambio local mientras bajaba: se sube primero
       var d = componer(principal, r[1]);
@@ -466,8 +468,9 @@
   // ----- Arranque ------------------------------------------------------
   function arrancar() {
     var g = new URLSearchParams(location.search).get('g');
-    if (g && !esDueno() && (!cfg || cfg.gid !== g)) {
-      // Link de un gimnasio: este dispositivo pasa a mostrar ese gimnasio.
+    if (g && (!cfg || cfg.gid !== g)) {
+      // Link de un gimnasio: este dispositivo pasa a mostrar ese gimnasio, aunque antes fuera
+      // dueño de otro (sus datos quedan en la nube y vuelve a entrar con Acceso administrador).
       cfg = { gid: g, rol: 'alumno' };
       guardarCfg();
       localStorage.removeItem(CLAVE_DATOS);
