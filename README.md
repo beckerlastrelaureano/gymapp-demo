@@ -36,8 +36,12 @@ Límites conocidos:
 - Los profes que entran con DNI en su propio celular pueden ver el panel, pero sus cambios no
   se guardan en la nube (la app avisa). Tienen que usar un dispositivo donde entró el dueño.
 - Las anotaciones de los alumnos se pueden escribir sin cuenta (cualquiera con el link).
-- Todo el gimnasio va en un documento (máximo 1 MB): logos o GIFs propios muy pesados pueden
-  no entrar.
+- Los GIF, fotos y el logo se guardan aparte (`gimnasios/{gid}/medios/`, en pedazos), así el
+  documento principal del gimnasio no pasa el máximo de 1 MB de Firestore. Hace falta el bloque
+  `medios` de `reglas-firebase.txt`.
+- Si la nube rechaza un cambio, ese dispositivo no baja nada hasta poder guardarlo (no se pierde).
+- Todo se guarda también en el navegador: en iPhone el máximo es de unos 5 MB, así que conviene
+  usar GIF livianos (menos de 500 KB).
 
 ## Ícono de cada gimnasio al instalar (`marca.js`)
 
@@ -46,3 +50,14 @@ iniciales sobre su color si no tiene logo). También cambia el ícono de iPhone.
 abre directo en el link del gimnasio (`?g=...`). Si el dueño cambia el logo, lo toman las
 instalaciones nuevas; las que ya estaban instaladas pueden tardar en actualizarse o necesitar
 reinstalarse (eso lo decide el celular).
+
+## También en Vercel
+
+Es la misma app, publicada desde este repo (Vercel > Add New > Project > importar
+`gymapp-demo`, sin cambiar nada de la configuración). No usar el nombre `gymapp-demo` en Vercel:
+ese es el proyecto de donde salen las animaciones.
+
+- Los datos de cada gimnasio están en la nube, así que el link de GitHub y el de Vercel muestran lo mismo.
+  Los dos siguen funcionando.
+- Cada dirección guarda aparte su memoria del navegador: en la de Vercel, el dueño entra una vez con
+  "Acceso administrador" y su email; los alumnos vuelven a poner su DNI.

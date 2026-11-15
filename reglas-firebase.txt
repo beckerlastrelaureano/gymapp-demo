@@ -27,6 +27,13 @@ por ejemplo justo antes de la última llave "}" de ese bloque, y tocá "Publicar
         allow write: if request.resource.data.keys().hasOnly(['dni', 'datos', 'actualizado'])
           && request.resource.data.datos.size() < 200000;
       }
+
+      // GIF, fotos y logo del gimnasio (van aparte porque no entran en el documento principal).
+      match /medios/{mid} {
+        allow read: if true;
+        allow write: if request.auth != null
+          && get(/databases/$(database)/documents/gimnasios/$(gid)).data.dueno == request.auth.uid;
+      }
     }
 
 Además, en Firestore > "Reglas", "licencias" ya tiene que poder leerse sin cuenta

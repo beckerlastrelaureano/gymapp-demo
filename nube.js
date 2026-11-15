@@ -132,6 +132,90 @@
     });
   }
 
+  // ----- Imágenes y GIF aparte -----------------------------------------
+  // Firestore admite hasta 1 MB por documento: con dos o tres GIF el gimnasio no entraba
+  // y no se guardaba nada más. Los GIF, fotos y el logo van en gimnasios/{gid}/medios/
+  // ({id}-0, {id}-1... en pedazos) y en el documento principal queda "medio:{id}".
+  // Los documentos viejos con las imágenes adentro se siguen leyendo igual.
+  var PREFIJO_MEDIO = 'medio:';
+  var TAM_PEDAZO = 700000;
+  var MIN_MEDIO = 4000;
+  var medios = {};  // id -> data URL
+  var enNube = {};  // id -> ya está subido
+  function esMedio(v) { return typeof v === 'string' && v.length > MIN_MEDIO && v.slice(0, 5) === 'data:'; }
+  function idMedio(s) {
+    var h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return 'm' + (h2 >>> 0).toString(36) + (h1 >>> 0).toString(36) + s.length.toString(36);
+  }
+  function recorrer(o, f) {
+    if (Array.isArray(o)) return o.map(function (x) { return recorrer(x, f); });
+    if (o && typeof o === 'object') { var c = {}; Object.keys(o).forEach(function (k) { c[k] = recorrer(o[k], f); }); return c; }
+    return f(o);
+  }
+  // Copia de los datos con las imágenes cambiadas por "medio:{id}".
+  function sacarMedios(d) {
+    var ids = {};
+    var c = recorrer(d, function (v) {
+      if (!esMedio(v)) return v;
+      var id = idMedio(v); medios[id] = v; ids[id] = 1;
+      return PREFIJO_MEDIO + id;
+    });
+    return { datos: c, ids: Object.keys(ids) };
+  }
+  function refsDe(d) {
+    var ids = {};
+    recorrer(d, function (v) { if (typeof v === 'string' && v.indexOf(PREFIJO_MEDIO) === 0) ids[v.slice(PREFIJO_MEDIO.length)] = 1; return v; });
+    return Object.keys(ids);
+  }
+  function ponerMedios(d) {
+    return recorrer(d, function (v) {
+      if (typeof v !== 'string' || v.indexOf(PREFIJO_MEDIO) !== 0) return v;
+      return medios[v.slice(PREFIJO_MEDIO.length)] || v; // si falta, queda la referencia (no se pierde al guardar)
+    });
+  }
+  // Las imágenes que ya están en este dispositivo no se vuelven a bajar.
+  (function () { var d = leer(CLAVE_DATOS); if (d) sacarMedios(d); })();
+  function rutaMedio(gid, id, i) { return 'gimnasios/' + encodeURIComponent(gid) + '/medios/' + id + '-' + i; }
+  function bajarMedios(gid, ids) {
+    var faltan = ids.filter(function (id) { return !medios[id]; });
+    ids.forEach(function (id) { if (medios[id]) enNube[id] = 1; });
+    return Promise.all(faltan.map(function (id) {
+      return leerDoc(rutaMedio(gid, id, 0)).then(function (p0) {
+        if (!p0) return;
+        var otros = [];
+        for (var i = 1; i < (p0.n || 1); i++) otros.push(leerDoc(rutaMedio(gid, id, i)));
+        return Promise.all(otros).then(function (r) {
+          if (r.some(function (p) { return !p; })) return;
+          medios[id] = [p0.d].concat(r.map(function (p) { return p.d; })).join('');
+          enNube[id] = 1;
+        });
+      });
+    }));
+  }
+  function subirMedios(gid, ids, tk) {
+    var faltan = ids.filter(function (id) { return !enNube[id] && medios[id]; });
+    // De a uno, y el pedazo 0 (que dice cuántos son) al final: así nunca queda uno a medias.
+    return faltan.reduce(function (p, id) {
+      return p.then(function () {
+        var s = medios[id], n = Math.ceil(s.length / TAM_PEDAZO), orden = [];
+        for (var i = n - 1; i >= 0; i--) orden.push(i);
+        return orden.reduce(function (q, i) {
+          return q.then(function () {
+            var campos = { d: s.slice(i * TAM_PEDAZO, (i + 1) * TAM_PEDAZO) };
+            if (i === 0) campos.n = n;
+            return escribirDoc(rutaMedio(gid, id, i), campos, tk);
+          });
+        }, Promise.resolve()).then(function () { enNube[id] = 1; });
+      });
+    }, Promise.resolve()).catch(function (e) { e.enMedios = true; throw e; });
+  }
+
   // ----- Armar los datos: gimnasio + lo que subió cada alumno ----------
   function parteAlumno(d, a) {
     return {
@@ -140,7 +224,7 @@
     };
   }
   function componer(principal, alumnos) {
-    var d = JSON.parse(principal.datos);
+    var d = ponerMedios(JSON.parse(principal.datos));
     var borradas = {}; JSON.parse(principal.borradas || '[]').forEach(function (id) { borradas[id] = 1; });
     var ids = {}; d.asistencias.forEach(function (x) { ids[x.id] = 1; });
     alumnos.forEach(function (s) {
@@ -185,13 +269,20 @@
   }
 
   // ----- Bajar ---------------------------------------------------------
-  var bajando = false, pendiente = null, subiendo = false;
+  // sinGuardar: hay cambios de este dispositivo que la nube rechazó. Mientras tanto no se
+  // baja nada, porque pisaría esos cambios (antes se perdía la rutina o el GIF recién cargado).
+  var bajando = false, pendiente = null, subiendo = false, sinGuardar = false;
   function bajar(primera) {
-    if (!cfg || !cfg.gid || bajando || pendiente || subiendo) return Promise.resolve();
+    if (!cfg || !cfg.gid || bajando || pendiente || subiendo || sinGuardar) return Promise.resolve();
     bajando = true;
-    return Promise.all([leerDoc('gimnasios/' + encodeURIComponent(cfg.gid)), listarAlumnos(cfg.gid)]).then(function (r) {
+    var gid = cfg.gid;
+    return Promise.all([leerDoc('gimnasios/' + encodeURIComponent(gid)), listarAlumnos(gid)]).then(function (r) {
       var principal = r[0];
       if (!principal) { if (primera) avisar('No encontramos ese gimnasio. Pedile el link de nuevo a tu gimnasio.'); return; }
+      return bajarMedios(gid, refsDe(JSON.parse(principal.datos))).then(function () { return r; });
+    }).then(function (r) {
+      if (!r) return;
+      var principal = r[0];
       borradas = JSON.parse(principal.borradas || '[]');
       // La licencia que vale es la del gimnasio, también para el dueño: reemplaza a un código
       // viejo guardado en este dispositivo (se bloquea solo si Becker suspende el del gimnasio).
@@ -200,7 +291,7 @@
         guardarLocal(CLAVE_LICENCIA, { codigo: principal.codigo, gimnasio: JSON.parse(principal.datos).gym.nombre, verificado: Date.now() });
         if (window.gymLicenciaControlar) window.gymLicenciaControlar();
       }
-      if (pendiente || subiendo) return; // hubo un cambio local mientras bajaba: se sube primero
+      if (pendiente || subiendo || sinGuardar) return; // hubo un cambio local mientras bajaba: se sube primero
       var d = componer(principal, r[1]);
       recordar(d);
       aplicar(d);
@@ -229,10 +320,17 @@
       var ahora = {}; d.asistencias.forEach(function (x) { ahora[x.id] = 1; });
       Object.keys(antes).forEach(function (id) { if (!ahora[id] && borradas.indexOf(id) < 0) borradas.push(id); });
       borradas = borradas.slice(-1000);
+      var gid = cfg.gid, sm = sacarMedios(sinAdmin(d)), texto = JSON.stringify(sm.datos);
       tareas.push(tokenDueno().then(function (tk) {
-        return escribirDoc('gimnasios/' + encodeURIComponent(cfg.gid), { datos: JSON.stringify(sinAdmin(d)), borradas: JSON.stringify(borradas), actualizado: Date.now() }, tk);
+        if (texto.length > 950000) { var g = new Error('GRANDE'); g.grande = true; throw g; }
+        // Primero las imágenes, después el gimnasio que las nombra.
+        return subirMedios(gid, sm.ids, tk).then(function () {
+          return escribirDoc('gimnasios/' + encodeURIComponent(gid), { datos: texto, borradas: JSON.stringify(borradas), actualizado: Date.now() }, tk);
+        });
       }).catch(function (e) {
-        if (e && (e.message === 'SIN_SESION' || e.status === 401 || e.status === 403)) avisar('Volvé a entrar con Acceso administrador para guardar los cambios en la nube.');
+        if (e && e.grande) avisar('El gimnasio tiene demasiados datos para la nube. Borrá alumnos o rutinas viejas.');
+        else if (e && e.enMedios && e.status === 403) avisar('No se pudieron subir las imágenes: falta habilitarlo en la nube. Avisale a Becker.');
+        else if (e && (e.message === 'SIN_SESION' || e.status === 401 || e.status === 403)) avisar('Volvé a entrar con Acceso administrador para guardar los cambios en la nube.');
         else avisar('No se pudieron guardar los cambios en la nube. Se reintenta solo.');
         throw e;
       }));
@@ -246,8 +344,10 @@
         { dni: a.dni, datos: p, actualizado: Date.now() }).then(function () { partes[a.id] = p; }));
     });
     Promise.all(tareas).then(function () {
+      sinGuardar = false;
       if (esDueno()) recordar(d);
     }).catch(function () {
+      sinGuardar = true;
       setTimeout(programarSubida, 15000);
     }).then(function () { subiendo = false; });
   }
@@ -349,7 +449,10 @@
           return leerDoc('gimnasios/' + gid).then(function (g) { return g && n < 50 ? libre(n + 1) : gid; });
         }
         return libre(0).then(function (gid) {
-          return escribirDoc('gimnasios/' + gid, { codigo: codigo, dueno: s.uid, datos: JSON.stringify(sinAdmin(d)), borradas: '[]', actualizado: Date.now() }, s.token, true)
+          var sm = sacarMedios(sinAdmin(d));
+          // Las imágenes van después: las reglas piden que el gimnasio ya exista y sea suyo.
+          return escribirDoc('gimnasios/' + gid, { codigo: codigo, dueno: s.uid, datos: JSON.stringify(sm.datos), borradas: '[]', actualizado: Date.now() }, s.token, true)
+            .then(function () { return subirMedios(gid, sm.ids, s.token).catch(function () {}); })
             .then(function () { return gid; });
         });
       }).then(function (gid) {
