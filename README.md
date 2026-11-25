@@ -61,3 +61,10 @@ ese es el proyecto de donde salen las animaciones.
   Los dos siguen funcionando.
 - Cada dirección guarda aparte su memoria del navegador: en la de Vercel, el dueño entra una vez con
   "Acceso administrador" y su email; los alumnos vuelven a poner su DNI.
+
+## Divisiones en las rutinas
+
+Cada ejercicio puede tener `bloque` (por ejemplo `Entrada en calor`). El profe lo elige debajo del
+nombre del ejercicio y vale desde ahí hasta la división siguiente. Los títulos se ven en el editor,
+en la ficha del alumno, en la rutina del día, en la rutina completa y en el PDF. Sin `bloque`, todo
+se ve como antes. El código agregado al bundle son las funciones `bqK`, `bqN`, `bqH`, `bqSet` y `bqSel`.
